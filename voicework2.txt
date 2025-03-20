@@ -1,0 +1,171 @@
+import speech_recognition as sr
+import os
+import subprocess
+import shutil
+
+########################################
+#  CONFIGURATION
+########################################
+
+# Hard-coded base path (update as you like)
+BASE_PATH = r"C:\programming\Test"
+
+# Fallback path to code.exe (update to your actual path if needed)
+FALLBACK_VSCODE_PATH = r"C:\Users\Teja\AppData\Local\Programs\Microsoft VS Code\bin\code.cmd"
+
+########################################
+#  HELPER FUNCTIONS
+########################################
+
+def listen_voice_command():
+    """
+    Listen from the microphone and attempt to convert speech to text.
+    Returns the recognized text in lowercase, or None if recognition fails.
+    """
+    recognizer = sr.Recognizer()
+    with sr.Microphone() as source:
+        print("Listening... (speak clearly)")
+        audio_data = recognizer.listen(source, phrase_time_limit=5)  # 5-second limit
+
+    try:
+        text = recognizer.recognize_google(audio_data)
+        text = text.lower().strip()
+        print(f"You said: {text}")
+        return text
+    except sr.UnknownValueError:
+        print("Sorry, I didn't catch that. (Could not understand audio.)")
+        return None
+    except sr.RequestError as e:
+        print(f"Request error from SpeechRecognition: {e}")
+        return None
+
+def open_in_vscode(folder_path):
+    """
+    Attempt to open the given folder in VS Code.
+    1) First try 'code' from PATH.
+    2) If not found, fall back to FALLBACK_VSCODE_PATH.
+    """
+    if shutil.which("code"):
+        # 'code' is found on the PATH
+        try:
+            subprocess.Popen(["code", folder_path])
+            return
+        except Exception as e:
+            print("Error using 'code' from PATH:", e)
+
+    # Fallback path
+    if os.path.isfile(FALLBACK_VSCODE_PATH):
+        try:
+            subprocess.Popen([FALLBACK_VSCODE_PATH, folder_path])
+            return
+        except Exception as e:
+            print("Error using fallback path:", e)
+
+    print("Could not open VS Code. Ensure 'code' is on your PATH or update FALLBACK_VSCODE_PATH.")
+
+########################################
+#  MAIN FLOW
+########################################
+
+def main():
+    print("\nWelcome to the Voice-Controlled Folder Creator!")
+    print(f"Default base path for new folders: {BASE_PATH}")
+    print("Say 'create folder named XYZ' to set a folder name.")
+    print("Say 'add .py file named main' or 'add .html file named index' to add files.")
+    print("Say 'done' (or 'finish') when you're ready to create everything.")
+    print("-----------------------------------------------------\n")
+
+    folder_name = None
+    files_to_create = []  # list of (filename.ext)
+
+    while True:
+        command = listen_voice_command()
+        if not command:
+            # If we couldn't understand, loop again
+            continue
+
+        # 1) Check if user says "create folder named"
+        if "create folder named" in command:
+            # Extract the folder name
+            # e.g. "create folder named myproject"
+            parts = command.split("create folder named")
+            if len(parts) > 1:
+                proposed_name = parts[1].strip()
+                if proposed_name:
+                    folder_name = proposed_name
+                    print(f"Folder name set to: {folder_name}")
+                else:
+                    print("Could not parse folder name. Please try again.")
+            else:
+                print("Could not parse folder name. Please try again.")
+
+        # 2) Check if user says "add .py file named x" or "add .html file named y"
+        elif "add" in command and "file named" in command:
+            # e.g. "add .py file named main"
+            # we can parse the extension and base filename
+            # We'll look for "add " + EXT + " file named "
+            # For simplicity, let's just parse from "add " to " file named " for extension,
+            # then from " file named " to end for the base filename
+            try:
+                add_part = command.split("add ")[1]  # ".py file named main"
+                ext_part, name_part = add_part.split(" file named ")
+                ext_part = ext_part.strip()  # e.g. ".py"
+                name_part = name_part.strip()  # e.g. "main"
+
+                # Ensure ext_part starts with a dot, e.g. ".py"
+                if not ext_part.startswith("."):
+                    print("Could not parse the file extension. Please include '.' e.g. '.py'.")
+                    continue
+
+                # Combine into "main.py"
+                full_filename = f"{name_part}{ext_part}"
+                files_to_create.append(full_filename)
+                print(f"Added file: {full_filename}")
+
+            except Exception as e:
+                print("Could not parse the file extension or name. Please try again.")
+                print("Expected syntax: 'add .py file named main'")
+                continue
+
+        # 3) Check if user says "done", "finish", or "stop"
+        elif any(word in command for word in ["done", "finish", "stop"]):
+            # If user hasn't set a folder name, ask them to do so
+            if not folder_name:
+                print("You have not specified a folder name yet. Please say 'create folder named XYZ'.")
+                continue
+
+            # Summarize
+            print("\nSummary of your request:")
+            print(f"Folder path: {BASE_PATH}")
+            print(f"Folder name: {folder_name}")
+            if files_to_create:
+                print("Files to create:")
+                for f in files_to_create:
+                    print(f"  - {f}")
+            else:
+                print("No files to create.")
+            
+            print("\nCreating now...")
+            # Create folder and files
+            final_folder_path = os.path.join(BASE_PATH, folder_name)
+            os.makedirs(final_folder_path, exist_ok=True)
+
+            for filename in files_to_create:
+                file_path = os.path.join(final_folder_path, filename)
+                with open(file_path, "w", encoding="utf-8") as fp:
+                    pass  # empty file
+
+            # Attempt to open in VS Code
+            open_in_vscode(final_folder_path)
+            print("\nAll done! Exiting.")
+            break
+
+        else:
+            print("Command not recognized. Examples:")
+            print("- 'Create folder named MyProject'")
+            print("- 'Add .py file named main'")
+            print("- 'Add .html file named index'")
+            print("- 'Done' (or 'finish', 'stop') to finalize.")
+
+if __name__ == "__main__":
+    main()
